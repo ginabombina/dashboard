@@ -9,7 +9,7 @@ CSV_FILE = "sheet.csv"
 DAY_RANGES = [1, 2, 4, 7, 14, 28]
 current_day_range = 7
 
-# Fixed colors for subjects and types (hex codes)
+# Subject colors
 SUBJECT_COLORS = {
     "Maths": "#8ec3e2",
     "Physics": "#b392e7",
@@ -17,10 +17,19 @@ SUBJECT_COLORS = {
     "EPQ": "#f7ef8a"
 }
 
+# Greys for overall
 TYPE_COLORS = {
     "Revision": "#B3B3B3",
     "Work": "#6e6e6e",
 }
+
+# Slightly darker versions for per-subject pies
+def darker(hex_color, factor=0.8):
+    hex_color = hex_color.lstrip('#')
+    rgb = tuple(int(hex_color[i:i+2], 16) for i in (0, 2, 4))
+    darkened = tuple(int(max(min(c * factor, 255), 0)) for c in rgb)
+    return f"#{darkened[0]:02x}{darkened[1]:02x}{darkened[2]:02x}"
+
 # ---------------------------------------- #
 
 def delta_hours(row):
@@ -34,15 +43,16 @@ def delta_hours(row):
         return (end_time - start_time).seconds / 3600
     except:
         return 0.0
-    
+
 def autopct_hours(values):
     def my_autopct(pct):
         total = sum(values)
-        hours = pct*total/100
+        hours = pct * total / 100
         return f"{hours:.1f}h\n({pct:.0f}%)"
     return my_autopct
 
 def load_and_process(day_range):
+    download_file()  # always refresh latest data
     df = pd.read_csv(
         CSV_FILE,
         usecols=[0,1,2,3,4],
@@ -51,66 +61,123 @@ def load_and_process(day_range):
     df.columns = ["Timestamp", "Start Time", "End Time", "Subject", "Type"]
     df['Timestamp'] = pd.to_datetime(df["Timestamp"], dayfirst=True, errors='coerce')
     df = df.dropna(subset=['Timestamp'])
+    
+    # Inclusive of today — e.g. 7 days = today + 6 days before
     today = pd.Timestamp.today().normalize().date()
-    start_date = today - timedelta(days=day_range)
+    start_date = today - timedelta(days=day_range - 1)
+    
     df['Date'] = df['Timestamp'].dt.date
     df_filtered = df[(df['Date'] >= start_date) & (df['Date'] <= today)].copy()
     df_filtered = df_filtered.dropna(subset=['Start Time','End Time'])
     df_filtered['Hours'] = df_filtered.apply(delta_hours, axis=1)
-    subject_hours = df_filtered.groupby('Subject')['Hours'].sum()
-    type_hours = df_filtered.groupby('Type')['Hours'].sum()
-    return subject_hours, type_hours
+    
+    return df_filtered
 
 # ---------------- PLOT ------------------ #
-fig, axes = plt.subplots(1, 2, figsize=(12,6))
-plt.subplots_adjust(bottom=0.2)
+fig = plt.figure(figsize=(14, 7))
+plt.subplots_adjust(bottom=0.2, wspace=0.3, hspace=0.4)
+
+# Left: subject breakdown
+ax_subject = plt.subplot2grid((2, 3), (0, 0), rowspan=2)
+
+# Right: 2×2 grid (these may be hidden dynamically)
+ax_maths = plt.subplot2grid((2, 3), (0, 1))
+ax_cs = plt.subplot2grid((2, 3), (0, 2))
+ax_physics = plt.subplot2grid((2, 3), (1, 1))
+ax_overall = plt.subplot2grid((2, 3), (1, 2))
+
+axes_right = {
+    "Maths": ax_maths,
+    "Computer Science": ax_cs,
+    "Physics": ax_physics,
+    "Overall": ax_overall
+}
 
 def draw_charts(day_range):
-    axes[0].clear()
-    axes[1].clear()
-    subject_hours, type_hours = load_and_process(day_range)
+    for ax in [ax_subject, *axes_right.values()]:
+        ax.clear()
+        ax.set_visible(True)  # reset visibility
 
-    if subject_hours.empty or type_hours.empty:
-        axes[0].text(0.5,0.5,"No data", ha='center')
-        axes[1].text(0.5,0.5,"No data", ha='center')
+    df_filtered = load_and_process(day_range)
+
+    if df_filtered.empty:
+        ax_subject.text(0.5, 0.5, "No data", ha='center', va='center')
+        for ax in axes_right.values():
+            ax.set_visible(False)
         fig.suptitle("")
-    else:
-        # Subjects pie chart
-        colors = [SUBJECT_COLORS.get(label,"#cccccc") for label in subject_hours.index]
-        axes[0].pie(
-            subject_hours.values,
-            labels=None,
-            autopct=autopct_hours(subject_hours.values),
-            startangle=90,
-            colors=colors
-        )
-        axes[0].set_title(f"Subject")
-        axes[0].axis('equal')
+        plt.draw()
+        return
 
-        # Type pie chart
-        colors = [TYPE_COLORS.get(label,"#cccccc") for label in type_hours.index]
-        axes[1].pie(
+    # --- Subject Pie Chart (left side) ---
+    subject_hours = df_filtered.groupby('Subject')['Hours'].sum()
+    colors = [SUBJECT_COLORS.get(label, "#cccccc") for label in subject_hours.index]
+    ax_subject.pie(
+        subject_hours.values,
+        labels=None,
+        autopct=autopct_hours(subject_hours.values),
+        startangle=90,
+        colors=colors
+    )
+    ax_subject.set_title("Subject Breakdown")
+    ax_subject.axis('equal')
+
+    # --- Work vs Revision (right side) ---
+    visible_axes = []
+    for subj, ax in axes_right.items():
+        if subj == "Overall":
+            df_sub = df_filtered
+        else:
+            df_sub = df_filtered[df_filtered['Subject'] == subj]
+        
+        type_hours = df_sub.groupby('Type')['Hours'].sum()
+        if type_hours.empty:
+            ax.clear()
+            ax.text(0.5, 0.5, f"No data for {subj}", ha='center', va='center', fontsize=11)
+            ax.set_title('')          # show subject title
+            ax.axis('off')              # tidy the axis (no pie borders)
+            visible_axes.append(ax)     # IMPORTANT: mark it visible so it won't be hidden later
+            continue
+
+        if subj == "Overall":
+            # Overall = greys
+            colors = [TYPE_COLORS.get(t, "#cccccc") for t in type_hours.index]
+        else:
+            # Subject-specific = subject color + darker version
+            base = SUBJECT_COLORS.get(subj, "#cccccc")
+            colors = [base, darker(base, 0.7)]
+
+        ax.pie(
             type_hours.values,
             labels=type_hours.index,
             autopct=autopct_hours(type_hours.values),
             startangle=90,
             colors=colors
         )
-        axes[1].set_title(f"Type of Work")
-        axes[1].axis('equal')
+        ax.set_title(subj)
+        ax.axis('equal')
+        visible_axes.append(ax)
 
-        # Add total hours at the bottom
-        total_hours = subject_hours.sum()
-        fig.suptitle(f"Total hours: {total_hours:.1f}h over {day_range} days", fontsize=18)
+    # Hide unused right-hand axes to tidy layout
+    for subj, ax in axes_right.items():
+        if ax not in visible_axes and subj != "Overall":
+            ax.set_visible(False)
+
+    # --- Total hours ---
+    total_hours = df_filtered['Hours'].sum()
+    fig.suptitle(f"Total hours: {total_hours:.1f}h over {day_range} day{'s' if day_range != 1 else ''}", fontsize=18)
 
     plt.draw()
 
 draw_charts(current_day_range)
 
 # ---------------- BUTTONS ---------------- #
-# Small buttons (discrete)
 button_axes = []
 buttons = []
+def update_day_range(dr):
+    global current_day_range
+    current_day_range = dr
+    draw_charts(current_day_range)
+
 for i, dr in enumerate(DAY_RANGES):
     ax = plt.axes([0.1 + i*0.1, 0.05, 0.08, 0.05])
     b = Button(ax, f"{dr}d")
@@ -127,23 +194,17 @@ def on_key(event):
     global current_day_range
     key = event.key.lower()
     if key == 'r':
-        download_file()
         draw_charts(current_day_range)
     elif key in ['1','2','3','4','5','6']:
-        index = int(key)-1
+        index = int(key) - 1
         if index < len(DAY_RANGES):
             current_day_range = DAY_RANGES[index]
             draw_charts(current_day_range)
 
 fig.canvas.mpl_connect('key_press_event', on_key)
 
-def update_day_range(dr):
-    global current_day_range
-    current_day_range = dr
-    draw_charts(current_day_range)
-
 # ---------------- AUTO REFRESH ---------------- #
-timer = fig.canvas.new_timer(interval=3600000)  # 1 hour = 3600000 ms
+timer = fig.canvas.new_timer(interval=3600000)  # 1 hour
 timer.add_callback(lambda: draw_charts(current_day_range))
 timer.start()
 
