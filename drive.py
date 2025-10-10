@@ -6,7 +6,7 @@ from googleapiclient.errors import HttpError
 from googleapiclient.http import MediaIoBaseDownload
 from google.oauth2 import service_account
 
-SERVICE_ACCOUNT_FILE = "rare-mechanic-448617-n3-cac81343b243.json"
+SERVICE_ACCOUNT_FILE = "rare-mechanic-448617-n3-7b05cfc5e78f.json"
 SPREADSHEET_ID = "1xwWo0-3QSJnBfZBwDazNxHg_HTqqeP3omKFG7lk64oc"
 OUTPUT_FILE = "sheet.csv"    
 
