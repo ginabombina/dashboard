@@ -1,4 +1,7 @@
 import io
+import os
+from dotenv import load_dotenv
+load_dotenv()
 
 import google.auth
 from googleapiclient.discovery import build
@@ -6,8 +9,8 @@ from googleapiclient.errors import HttpError
 from googleapiclient.http import MediaIoBaseDownload
 from google.oauth2 import service_account
 
-SERVICE_ACCOUNT_FILE = "rare-mechanic-448617-n3-7b05cfc5e78f.json"
-SPREADSHEET_ID = "1xwWo0-3QSJnBfZBwDazNxHg_HTqqeP3omKFG7lk64oc"
+SERVICE_ACCOUNT_FILE = os.getenv("SERVICE_ACCOUNT_FILE")
+SPREADSHEET_ID = os.getenv("SPREADSHEET_ID")
 OUTPUT_FILE = "sheet.csv"    
 
 def download_file():
