@@ -111,22 +111,15 @@ plt.rcParams['toolbar'] = 'None'
 fig = plt.figure(figsize=(16, 9), dpi=100, facecolor=BACKGROUND_COLOR)
 plt.subplots_adjust(left=0.03, right=0.97, top=0.95, bottom=0.07, wspace=0.3)
 
-# Layout: top row = subject bars (left 80%) + stats (right 20%)
-#         bottom row: goal circles (left ~35%) + day bars (right ~65%)
+# Layout: top row = goal circles (left ~35%) + day bars (right ~65%)
+#         bottom row = subject bars (left 80%) + stats (right 20%)
 gs = GridSpec(2, 10, figure=fig, height_ratios=[1.0, 1.0])
 
-ax_subject     = fig.add_subplot(gs[0, :8])   # top-left: subject bars
-ax_stats       = fig.add_subplot(gs[0, 8:])   # top-right: stats panel
-ax_daily_goal  = fig.add_subplot(gs[1, 0:2])  # bottom: daily ring
-ax_weekly_goal = fig.add_subplot(gs[1, 2:4])  # bottom: weekly ring
-ax_days        = fig.add_subplot(gs[1, 4:])   # bottom: 14-day bar chart
-
-def _nudge_rings_up():
-    """Shift the goal ring axes upward so they sit centred in the bottom half."""
-    for ax in (ax_daily_goal, ax_weekly_goal):
-        pos = ax.get_position()
-        shift = pos.height * 0.18   # move up by 18% of their own height
-        ax.set_position([pos.x0, pos.y0 + shift, pos.width, pos.height])
+ax_daily_goal  = fig.add_subplot(gs[0, 0:2])  # top: daily ring
+ax_weekly_goal = fig.add_subplot(gs[0, 2:4])  # top: weekly ring
+ax_days        = fig.add_subplot(gs[0, 4:])   # top: 14-day bar chart
+ax_subject     = fig.add_subplot(gs[1, :8])   # bottom-left: subject bars
+ax_stats       = fig.add_subplot(gs[1, 8:])   # bottom-right: stats panel
 
 
 # ================= SUBJECT BARS ================= #
@@ -321,7 +314,6 @@ def draw_charts():
     draw_goal(ax_weekly_goal, weekly, WEEKLY_GOAL_HOURS, "Weekly Goal")
     draw_days(ax_days, raw, DAY_RANGE)
 
-    _nudge_rings_up()
     fig.canvas.draw_idle()
 
 
