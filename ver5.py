@@ -16,14 +16,14 @@ CSV_FILE = "sheet.csv"
 DAY_RANGE = 14
 
 SUBJECT_COLORS = {
-    "Maths":           "#69b1db",
+    "Maths":           "#56a5d3",
     "Further Maths":   "#2a5f8f",
-    "Computer Science":"#da8bda"
+    "Computer Science":"#c95dc9"
 }
 
-GOAL_COLOR         = "#e7de5f"
 GOAL_HIT_COLOR     = "#6dd97a"
 BAR_COLOR          = "#a078e0"
+GOAL_COLOR         = BAR_COLOR
 
 DAILY_GOAL_HOURS   = 4
 WEEKLY_GOAL_HOURS  = 28
@@ -93,11 +93,16 @@ def compute_streak(df):
 
 
 def compute_momentum(df, day_range):
-    """Return total hours studied in the last `day_range` days (including today)."""
-    today = pd.Timestamp.today().date()
-    start = today - timedelta(days=day_range - 1)
-    total = df[(df['Date'] >= start) & (df['Date'] <= today)]['Minutes'].sum()
-    return hours(total)
+    """Return the difference in hours between the current period and the previous period."""
+    today      = pd.Timestamp.today().date()
+    cur_start  = today - timedelta(days=day_range - 1)
+    prev_end   = cur_start - timedelta(days=1)
+    prev_start = prev_end - timedelta(days=day_range - 1)
+
+    current  = df[(df['Date'] >= cur_start)  & (df['Date'] <= today)]['Minutes'].sum()
+    previous = df[(df['Date'] >= prev_start) & (df['Date'] <= prev_end)]['Minutes'].sum()
+
+    return hours(current) - hours(previous)
 
 
 # ================= FIGURE ================= #
@@ -108,7 +113,7 @@ plt.subplots_adjust(left=0.03, right=0.97, top=0.95, bottom=0.07, wspace=0.3)
 
 # Layout: top row = subject bars (left 80%) + stats (right 20%)
 #         bottom row: goal circles (left ~35%) + day bars (right ~65%)
-gs = GridSpec(2, 10, figure=fig, height_ratios=[1.0, 1.2])
+gs = GridSpec(2, 10, figure=fig, height_ratios=[1.0, 1.0])
 
 ax_subject     = fig.add_subplot(gs[0, :8])   # top-left: subject bars
 ax_stats       = fig.add_subplot(gs[0, 8:])   # top-right: stats panel
@@ -130,11 +135,12 @@ def draw_subject(ax, df):
     max_val = max(values.values()) if values else 1
     max_val = max(max_val, 1)
 
-    bar_height = 0.18
-    spacing    = 0.12
+    bar_height = 0.22
+    spacing    = 0.10
     n          = len(subject_order)
     total_h    = n * bar_height + (n - 1) * spacing
-    start_y    = (1 - total_h) / 2
+    # Push bars up slightly to leave room for the "7 days" label at the bottom
+    start_y    = (1 - total_h) / 2 + 0.06
 
     for i, name in enumerate(subject_order):
         val   = values[name]
@@ -170,6 +176,11 @@ def draw_subject(ax, df):
                 ha='right', va='center',
                 color=TEXT_COLOR, fontsize=12)
 
+    # "7 days" label below the bottom bar
+    ax.text(0.5, start_y - 0.08, "last 7 days",
+            ha='center', va='center',
+            color="#888888", fontsize=9)
+
     ax.set_xlim(0, 1)
     ax.set_ylim(0, 1)
 
@@ -180,27 +191,28 @@ def draw_stats(ax, streak, momentum_3d, momentum_7d):
     ax.axis('off')
     ax.set_facecolor(BACKGROUND_COLOR)
 
+    def fmt_momentum(val):
+        return f"{val:+.1f}h"
+
     stats = [
-        ("Streak",        f"{streak}d"),
-        ("3-day",         f"{momentum_3d:.1f}h"),
-        ("7-day",         f"{momentum_7d:.1f}h"),
+        ("Streak",           f"{streak}d"),
+        ("3-day momentum",   fmt_momentum(momentum_3d)),
+        ("7-day momentum",   fmt_momentum(momentum_7d)),
     ]
 
-    n       = len(stats)
-    slot_h  = 1.0 / n
+    n      = len(stats)
+    slot_h = 1.0 / n
 
     for i, (label, value) in enumerate(stats):
-        # Slots from top to bottom
         centre_y = 1.0 - (i + 0.5) * slot_h
 
-        ax.text(0.5, centre_y + 0.06, label,
+        ax.text(0.5, centre_y + 0.10, label,
                 ha='center', va='center',
-                color=TEXT_COLOR, fontsize=11)
-        ax.text(0.5, centre_y - 0.08, value,
+                color=TEXT_COLOR, fontsize=10)
+        ax.text(0.5, centre_y - 0.10, value,
                 ha='center', va='center',
-                color=ACCENT_TEXT, fontsize=20, weight='bold')
+                color=ACCENT_TEXT, fontsize=22, weight='bold')
 
-        # Separator line (skip after last)
         if i < n - 1:
             sep_y = 1.0 - (i + 1) * slot_h
             ax.axhline(sep_y, color=ACCENT_COLOR, linewidth=1, xmin=0.05, xmax=0.95)
@@ -253,7 +265,7 @@ def draw_days(ax, df, day_range):
         d    = today - timedelta(days=(day_range - 1 - i))
         mins = df[df['Date'] == d]['Minutes'].sum()
         values.append(hours(mins))
-        labels.append(d.strftime("%d %b"))
+        labels.append(d.strftime("%a"))
 
     max_val = max(values) if any(v > 0 for v in values) else 1
 
@@ -273,7 +285,7 @@ def draw_days(ax, df, day_range):
 
         ax.text(i + bar_w / 2, -0.06, labels[i],
                 ha='center', va='top',
-                color=TEXT_COLOR, fontsize=7.5, rotation=45)
+                color=TEXT_COLOR, fontsize=8.5)
 
     ax.set_xlim(-0.2, day_range)
     ax.set_ylim(0, 1.2)
