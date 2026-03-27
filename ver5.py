@@ -230,7 +230,7 @@ def draw_goal(ax, current, goal, title):
     progress   = min(current / goal, 1)
     goal_hit   = current >= goal
     fill_color = GOAL_HIT_COLOR if goal_hit else GOAL_COLOR
-    pct_text   = f"{int(progress * 100)}%"
+    pct_text = f"{int(current / goal * 100)}%"
 
     ax.pie([1], radius=1, colors=[ACCENT_COLOR], startangle=90)
     ax.pie([progress, 1 - progress],
