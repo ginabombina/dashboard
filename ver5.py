@@ -121,6 +121,13 @@ ax_daily_goal  = fig.add_subplot(gs[1, 0:2])  # bottom: daily ring
 ax_weekly_goal = fig.add_subplot(gs[1, 2:4])  # bottom: weekly ring
 ax_days        = fig.add_subplot(gs[1, 4:])   # bottom: 14-day bar chart
 
+def _nudge_rings_up():
+    """Shift the goal ring axes upward so they sit centred in the bottom half."""
+    for ax in (ax_daily_goal, ax_weekly_goal):
+        pos = ax.get_position()
+        shift = pos.height * 0.18   # move up by 18% of their own height
+        ax.set_position([pos.x0, pos.y0 + shift, pos.width, pos.height])
+
 
 # ================= SUBJECT BARS ================= #
 def draw_subject(ax, df):
@@ -314,6 +321,7 @@ def draw_charts():
     draw_goal(ax_weekly_goal, weekly, WEEKLY_GOAL_HOURS, "Weekly Goal")
     draw_days(ax_days, raw, DAY_RANGE)
 
+    _nudge_rings_up()
     fig.canvas.draw_idle()
 
 
