@@ -63,27 +63,23 @@ def load_range(df, day_range):
 # ================= METRICS ================= #
 def compute_streak(df):
     """
-    Count consecutive days (going back from yesterday) where the daily goal
-    was met. Today is included in the streak only if the goal is already met,
-    so the streak never resets to 0 at midnight if yesterday was a goal day.
+    Count consecutive days where the daily goal was met.
+    Today is included only if the goal is already met, so the streak
+    never resets to 0 at midnight if yesterday was a goal day.
     """
     today     = pd.Timestamp.today().date()
     yesterday = today - timedelta(days=1)
 
     streak = 0
 
-    # Check today first — if goal already met, count it
     today_mins = df[df['Date'] == today]['Minutes'].sum()
     if today_mins >= DAILY_GOAL_HOURS * 60:
         streak += 1
-        start_day = yesterday
-    else:
-        # Today not yet done; streak is built from yesterday backwards
-        start_day = yesterday
 
+    # Always walk back from yesterday regardless
     for i in range(365):
-        d     = start_day - timedelta(days=i)
-        mins  = df[df['Date'] == d]['Minutes'].sum()
+        d    = yesterday - timedelta(days=i)
+        mins = df[df['Date'] == d]['Minutes'].sum()
         if mins >= DAILY_GOAL_HOURS * 60:
             streak += 1
         else:
@@ -139,7 +135,6 @@ def draw_subject(ax, df):
     spacing    = 0.10
     n          = len(subject_order)
     total_h    = n * bar_height + (n - 1) * spacing
-    # Push bars up slightly to leave room for the "7 days" label at the bottom
     start_y    = (1 - total_h) / 2 + 0.06
 
     for i, name in enumerate(subject_order):
@@ -176,7 +171,7 @@ def draw_subject(ax, df):
                 ha='right', va='center',
                 color=TEXT_COLOR, fontsize=12)
 
-    # "7 days" label below the bottom bar
+    # "last 7 days" label below the bottom bar
     ax.text(0.5, start_y - 0.08, "last 7 days",
             ha='center', va='center',
             color="#888888", fontsize=9)
@@ -195,9 +190,9 @@ def draw_stats(ax, streak, momentum_3d, momentum_7d):
         return f"{val:+.1f}h"
 
     stats = [
-        ("Streak",           f"{streak}d"),
-        ("3-day momentum",   fmt_momentum(momentum_3d)),
-        ("7-day momentum",   fmt_momentum(momentum_7d)),
+        ("Streak",         f"{streak}d"),
+        ("3-day momentum", fmt_momentum(momentum_3d)),
+        ("7-day momentum", fmt_momentum(momentum_7d)),
     ]
 
     n      = len(stats)
@@ -230,7 +225,7 @@ def draw_goal(ax, current, goal, title):
     progress   = min(current / goal, 1)
     goal_hit   = current >= goal
     fill_color = GOAL_HIT_COLOR if goal_hit else GOAL_COLOR
-    pct_text = f"{int(current / goal * 100)}%"
+    pct_text   = f"{int(current / goal * 100)}%"
 
     ax.pie([1], radius=1, colors=[ACCENT_COLOR], startangle=90)
     ax.pie([progress, 1 - progress],
@@ -292,9 +287,23 @@ def draw_days(ax, df, day_range):
 
 
 # ================= DRAW ALL ================= #
+_last_good_raw = None  # cache last successful load
+
 def draw_charts():
-    raw = load_raw()
-    df  = load_range(raw, DAY_RANGE)
+    global _last_good_raw
+
+    # Try to load fresh data; fall back to last good load on failure
+    try:
+        raw = load_raw()
+        _last_good_raw = raw
+    except Exception as e:
+        print(f"Failed to load CSV, using cached data: {e}")
+        if _last_good_raw is None:
+            return  # nothing to show yet
+        raw = _last_good_raw
+
+    # 7-day slice for subject bars
+    df_7 = load_range(raw, 7)
 
     today      = pd.Timestamp.today().date()
     week_start = today - timedelta(days=6)
@@ -308,7 +317,7 @@ def draw_charts():
 
     fig.texts.clear()
 
-    draw_subject(ax_subject, df)
+    draw_subject(ax_subject, df_7)
     draw_stats(ax_stats, streak, momentum_3d, momentum_7d)
     draw_goal(ax_daily_goal,  daily,  DAILY_GOAL_HOURS,  "Daily Goal")
     draw_goal(ax_weekly_goal, weekly, WEEKLY_GOAL_HOURS, "Weekly Goal")
@@ -320,7 +329,10 @@ def draw_charts():
 # ================= CONTROLS ================= #
 def on_key(event):
     if event.key == 'r':
-        download_file()
+        try:
+            download_file()
+        except Exception as e:
+            print(f"Download failed: {e}")
         draw_charts()
 
 fig.canvas.mpl_connect('key_press_event', on_key)
@@ -328,7 +340,10 @@ fig.canvas.mpl_connect('key_press_event', on_key)
 
 # ================= AUTO REFRESH ================= #
 def auto_refresh():
-    download_file()
+    try:
+        download_file()
+    except Exception as e:
+        print(f"Auto-refresh download failed: {e}")
     draw_charts()
 
 timer = fig.canvas.new_timer(interval=600000)  # every 10 mins
